@@ -25,6 +25,7 @@ Tamba uses `dyame` and `notdyame` for booleans, and `toree(...)` for output.
 ```bash
 jusu run hello.tmb
 jusu repl
+jusu test
 jusu version
 ```
 
@@ -37,6 +38,7 @@ jusu version
 - Variables, assignment, expressions, conditions, loops, functions and returns
 - Short-circuit `and` / `or`
 - Source-aware runtime and parser diagnostics
+- Real `jusu test` command using Python's test runner
 - Regression tests and GitHub Actions CI
 
 ## Roadmap
