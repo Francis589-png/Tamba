@@ -39,7 +39,6 @@ class TambaTests(unittest.TestCase):
 
     def test_parser_error_location(self):
         from tamba.errors import ParseError
-
         with self.assertRaises(ParseError) as context:
             Parser('let x =\n').parse()
         self.assertEqual((context.exception.line, context.exception.column), (2, 1))
@@ -72,6 +71,27 @@ class TambaTests(unittest.TestCase):
         with self.assertRaises(RuntimeErrorTamba) as context:
             Interpreter(source, 'args.tmb').run(Parser(source, 'args.tmb').parse())
         self.assertEqual((context.exception.line, context.exception.column), (2, 10))
+
+    def test_nested_function_call_stack(self):
+        source = (
+            'fn inner() {\n'
+            '    toree(missing)\n'
+            '}\n'
+            'fn outer() {\n'
+            '    inner()\n'
+            '}\n'
+            'outer()\n'
+        )
+        with self.assertRaises(RuntimeErrorTamba) as context:
+            Interpreter(source, 'stack.tmb').run(Parser(source, 'stack.tmb').parse())
+        error = context.exception
+        self.assertEqual((error.line, error.column), (2, 10))
+        self.assertIn("Undefined variable 'missing'", str(error))
+        self.assertEqual(error.stack, [('outer', 8, 1), ('inner', 5, 5)])
+        rendered = str(error)
+        self.assertIn('Call stack:', rendered)
+        self.assertIn('inner() at line 5, column 5', rendered)
+        self.assertIn('outer() at line 8, column 1', rendered)
 
 
 if __name__ == '__main__':
