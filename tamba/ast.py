@@ -21,6 +21,28 @@ class Variable:
 
 
 @dataclass
+class ListLiteral:
+    items: list
+    line: int = 1
+    column: int = 1
+
+
+@dataclass
+class MapLiteral:
+    entries: list
+    line: int = 1
+    column: int = 1
+
+
+@dataclass
+class Index:
+    collection: object
+    index: object
+    line: int = 1
+    column: int = 1
+
+
+@dataclass
 class Binary:
     left: object
     op: str
@@ -40,6 +62,15 @@ class Unary:
 @dataclass
 class Assign:
     name: str
+    value: object
+    line: int = 1
+    column: int = 1
+
+
+@dataclass
+class IndexAssign:
+    collection: object
+    index: object
     value: object
     line: int = 1
     column: int = 1
