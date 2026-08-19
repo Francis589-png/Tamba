@@ -63,7 +63,16 @@ class Interpreter:
         self.filename = filename
         self.output = output if output is not None else print
         self.env = Env()
-        self.env.set('toree', lambda *args: self.output(*args))
+        self.env.set('toree', self._toree)
+
+    def _toree(self, *args):
+        rendered = [
+            'dyame' if value is True else
+            'notdyame' if value is False else
+            str(value)
+            for value in args
+        ]
+        self.output(*rendered)
 
     def run(self, program):
         for statement in program.statements:
@@ -117,7 +126,6 @@ class Interpreter:
                 return +value
 
             if isinstance(node, Binary):
-                # Logical operators short-circuit: the right side is only evaluated when needed.
                 left = self.eval(node.left)
                 if node.op == 'and':
                     return self.eval(node.right) if left else left
