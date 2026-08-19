@@ -1,12 +1,15 @@
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
 [project]
 name = "tamba-lang"
-version = "0.1.0"
+version = "0.1.1"
 description = "The Tamba programming language and JUSU CLI"
 requires-python = ">=3.10"
+
 [project.scripts]
 jusu = "tamba.__main__:main"
+
 [tool.setuptools.packages.find]
 include = ["tamba*"]
