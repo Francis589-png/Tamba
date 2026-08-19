@@ -77,6 +77,8 @@ class Parser:
             value = self.assign()
             if isinstance(expression, Variable):
                 return Assign(expression.name, value, operator.line, operator.column)
+            if isinstance(expression, Index):
+                return IndexAssign(expression.target, expression.index, value, operator.line, operator.column)
             self._err('Invalid assignment target', operator)
         return expression
 
@@ -130,16 +132,24 @@ class Parser:
 
     def call(self):
         expression = self.primary()
-        while self._match('('):
-            opening = self._prev()
-            args = []
-            if not self._at(')'):
-                while True:
-                    args.append(self.expr())
-                    if not self._match(','):
-                        break
-            self._consume(')', 'Expected ) after arguments')
-            expression = Call(expression, args, opening.line, opening.column)
+        while True:
+            if self._match('('):
+                opening = self._prev()
+                args = []
+                if not self._at(')'):
+                    while True:
+                        args.append(self.expr())
+                        if not self._match(','):
+                            break
+                self._consume(')', 'Expected ) after arguments')
+                expression = Call(expression, args, opening.line, opening.column)
+            elif self._match('['):
+                opening = self._prev()
+                index = self.expr()
+                self._consume(']', 'Expected ] after index')
+                expression = Index(expression, index, opening.line, opening.column)
+            else:
+                break
         return expression
 
     def primary(self):
@@ -156,6 +166,28 @@ class Parser:
             expression = self.expr()
             self._consume(')', 'Expected )')
             return expression
+        if self._match('['):
+            token = self._prev()
+            items = []
+            if not self._at(']'):
+                while True:
+                    items.append(self.expr())
+                    if not self._match(','):
+                        break
+            self._consume(']', 'Expected ] after list')
+            return ListLiteral(items, token.line, token.column)
+        if self._match('{'):
+            token = self._prev()
+            entries = []
+            if not self._at('}'):
+                while True:
+                    key = self._consume('IDENT', 'Expected map key').value
+                    self._consume(':', 'Expected : after map key')
+                    entries.append((key, self.expr()))
+                    if not self._match(','):
+                        break
+            self._consume('}', 'Expected } after map')
+            return MapLiteral(entries, token.line, token.column)
         self._err('Expected expression', self._peek())
 
     def _match(self, *kinds):
