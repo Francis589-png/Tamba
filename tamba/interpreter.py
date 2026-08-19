@@ -1,62 +1,182 @@
 from .ast import *
 from .errors import RuntimeErrorTamba
+
+
 class ReturnSignal(Exception):
- def __init__(self,v): self.value=v
+    def __init__(self, value):
+        self.value = value
+
+
 class Env:
- def __init__(self,parent=None): self.values={}; self.parent=parent
- def get(self,n):
-  if n in self.values:return self.values[n]
-  if self.parent:return self.parent.get(n)
-  raise KeyError(n)
- def set(self,n,v): self.values[n]=v
- def assign(self,n,v):
-  if n in self.values:self.values[n]=v; return
-  if self.parent:self.parent.assign(n,v); return
-  raise KeyError(n)
+    def __init__(self, parent=None):
+        self.values = {}
+        self.parent = parent
+
+    def get(self, name):
+        if name in self.values:
+            return self.values[name]
+        if self.parent:
+            return self.parent.get(name)
+        raise KeyError(name)
+
+    def set(self, name, value):
+        self.values[name] = value
+
+    def assign(self, name, value):
+        if name in self.values:
+            self.values[name] = value
+            return
+        if self.parent:
+            self.parent.assign(name, value)
+            return
+        raise KeyError(name)
+
+
 class FunctionValue:
- def __init__(self,fn,closure): self.fn,self.closure=fn,closure
- def call(self,args,interp):
-  if len(args)!=len(self.fn.params): raise RuntimeErrorTamba(f'Function {self.fn.name} expects {len(self.fn.params)} argument(s), got {len(args)}',interp.source,1,1,interp.filename)
-  e=Env(self.closure)
-  for n,v in zip(self.fn.params,args): e.set(n,v)
-  try: interp.exec_block(self.fn.body,e)
-  except ReturnSignal as r:return r.value
-  return None
+    def __init__(self, function, closure):
+        self.function = function
+        self.closure = closure
+
+    def call(self, args, interpreter, call_node):
+        if len(args) != len(self.function.params):
+            raise RuntimeErrorTamba(
+                f'Function {self.function.name} expects {len(self.function.params)} argument(s), got {len(args)}',
+                interpreter.source,
+                call_node.line,
+                call_node.column,
+                interpreter.filename,
+                hint=f'Pass exactly {len(self.function.params)} argument(s).',
+            )
+        environment = Env(self.closure)
+        for name, value in zip(self.function.params, args):
+            environment.set(name, value)
+        try:
+            interpreter.exec_block(self.function.body, environment)
+        except ReturnSignal as signal:
+            return signal.value
+        return None
+
+
 class Interpreter:
- def __init__(self,source,filename='<stdin>',output=None):
-  self.source,self.filename=source,filename; self.output=output or print; self.env=Env(); self.env.set('toree',lambda *a:self.output(*a))
- def run(self,program):
-  for s in program.statements:self.exec(s)
- def exec_block(self,b,e):
-  old=self.env; self.env=e
-  try:
-   for s in b.statements:self.exec(s)
-  finally:self.env=old
- def exec(self,n):
-  if isinstance(n,ExprStmt): self.eval(n.expr)
-  elif isinstance(n,Let): self.env.set(n.name,self.eval(n.value))
-  elif isinstance(n,Assign): self.env.assign(n.name,self.eval(n.value))
-  elif isinstance(n,Block): self.exec_block(n,Env(self.env))
-  elif isinstance(n,If): self.exec_block(n.then,Env(self.env)) if self.eval(n.condition) else (self.exec_block(n.otherwise,Env(self.env)) if n.otherwise else None)
-  elif isinstance(n,While):
-   while self.eval(n.condition): self.exec_block(n.body,Env(self.env))
-  elif isinstance(n,Function): self.env.set(n.name,FunctionValue(n,self.env))
-  elif isinstance(n,Return): raise ReturnSignal(None if n.value is None else self.eval(n.value))
- def eval(self,n):
-  try:
-   if isinstance(n,Literal):return n.value
-   if isinstance(n,Variable):return self.env.get(n.name)
-   if isinstance(n,Unary):
-    v=self.eval(n.expr); return (not v) if n.op=='NOT' else (-v if n.op=='-' else +v)
-   if isinstance(n,Binary):
-    a=self.eval(n.left); b=self.eval(n.right)
-    return {'+':lambda:a+b,'-':lambda:a-b,'*':lambda:a*b,'/':lambda:a/b,'%':lambda:a%b,'==':lambda:a==b,'!=':lambda:a!=b,'<':lambda:a<b,'>':lambda:a>b,'<=':lambda:a<=b,'>=':lambda:a>=b,'and':lambda:a and b,'or':lambda:a or b}[n.op]()
-   if isinstance(n,Assign): v=self.eval(n.value); self.env.assign(n.name,v); return v
-   if isinstance(n,Call):
-    f=self.eval(n.callee); args=[self.eval(x) for x in n.args]
-    if isinstance(f,FunctionValue): return f.call(args,self)
-    if not callable(f): raise TypeError(f'{f!r} is not callable')
-    return f(*args)
-  except KeyError as e: raise RuntimeErrorTamba(f"Undefined variable '{e.args[0]}'",self.source,1,1,self.filename,hint='Check the variable name.')
-  except ZeroDivisionError: raise RuntimeErrorTamba('Division by zero',self.source,1,1,self.filename)
-  except TypeError as e: raise RuntimeErrorTamba(str(e),self.source,1,1,self.filename)
+    def __init__(self, source, filename='<stdin>', output=None):
+        self.source = source
+        self.filename = filename
+        self.output = output if output is not None else print
+        self.env = Env()
+        self.env.set('toree', lambda *args: self.output(*args))
+
+    def run(self, program):
+        for statement in program.statements:
+            self.exec(statement)
+
+    def exec_block(self, block, environment):
+        old = self.env
+        self.env = environment
+        try:
+            for statement in block.statements:
+                self.exec(statement)
+        finally:
+            self.env = old
+
+    def exec(self, node):
+        if isinstance(node, ExprStmt):
+            self.eval(node.expr)
+        elif isinstance(node, Let):
+            self.env.set(node.name, self.eval(node.value))
+        elif isinstance(node, Assign):
+            self.env.assign(node.name, self.eval(node.value))
+        elif isinstance(node, Block):
+            self.exec_block(node, Env(self.env))
+        elif isinstance(node, If):
+            if self.eval(node.condition):
+                self.exec_block(node.then, Env(self.env))
+            elif node.otherwise:
+                self.exec_block(node.otherwise, Env(self.env))
+        elif isinstance(node, While):
+            while self.eval(node.condition):
+                self.exec_block(node.body, Env(self.env))
+        elif isinstance(node, Function):
+            self.env.set(node.name, FunctionValue(node, self.env))
+        elif isinstance(node, Return):
+            raise ReturnSignal(None if node.value is None else self.eval(node.value))
+
+    def eval(self, node):
+        try:
+            if isinstance(node, Literal):
+                return node.value
+
+            if isinstance(node, Variable):
+                return self.env.get(node.name)
+
+            if isinstance(node, Unary):
+                value = self.eval(node.expr)
+                if node.op == 'NOT':
+                    return not value
+                if node.op == '-':
+                    return -value
+                return +value
+
+            if isinstance(node, Binary):
+                # Logical operators short-circuit: the right side is only evaluated when needed.
+                left = self.eval(node.left)
+                if node.op == 'and':
+                    return self.eval(node.right) if left else left
+                if node.op == 'or':
+                    return left if left else self.eval(node.right)
+
+                right = self.eval(node.right)
+                operations = {
+                    '+': lambda: left + right,
+                    '-': lambda: left - right,
+                    '*': lambda: left * right,
+                    '/': lambda: left / right,
+                    '%': lambda: left % right,
+                    '==': lambda: left == right,
+                    '!=': lambda: left != right,
+                    '<': lambda: left < right,
+                    '>': lambda: left > right,
+                    '<=': lambda: left <= right,
+                    '>=': lambda: left >= right,
+                }
+                return operations[node.op]()
+
+            if isinstance(node, Assign):
+                value = self.eval(node.value)
+                self.env.assign(node.name, value)
+                return value
+
+            if isinstance(node, Call):
+                function = self.eval(node.callee)
+                args = [self.eval(argument) for argument in node.args]
+                if isinstance(function, FunctionValue):
+                    return function.call(args, self, node)
+                if not callable(function):
+                    raise TypeError(f'{function!r} is not callable')
+                return function(*args)
+
+        except KeyError as error:
+            raise RuntimeErrorTamba(
+                f"Undefined variable '{error.args[0]}'",
+                self.source,
+                node.line,
+                node.column,
+                self.filename,
+                hint='Check the variable name or define it before use.',
+            ) from None
+        except ZeroDivisionError:
+            raise RuntimeErrorTamba(
+                'Division by zero',
+                self.source,
+                node.line,
+                node.column,
+                self.filename,
+                hint='Make sure the divisor cannot be zero.',
+            ) from None
+        except TypeError as error:
+            raise RuntimeErrorTamba(
+                str(error),
+                self.source,
+                node.line,
+                node.column,
+                self.filename,
+            ) from None
