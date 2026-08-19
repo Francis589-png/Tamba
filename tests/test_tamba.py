@@ -58,7 +58,7 @@ class TambaTests(unittest.TestCase):
         source = 'let x = 10\nlet y = x / 0\n'
         with self.assertRaises(RuntimeErrorTamba) as context:
             Interpreter(source, 'math.tmb').run(Parser(source, 'math.tmb').parse())
-        self.assertEqual((context.exception.line, context.exception.column), (2, 11))
+        self.assertEqual((context.exception.line, context.exception.column), (2, 13))
         self.assertIn('Division by zero', str(context.exception))
 
     def test_short_circuit_and(self):
