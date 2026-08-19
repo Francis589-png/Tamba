@@ -41,19 +41,24 @@ class FunctionValue:
         if len(args) != len(self.function.params):
             raise RuntimeErrorTamba(
                 f'Function {self.function.name} expects {len(self.function.params)} argument(s), got {len(args)}',
-                interpreter.source,
-                call_node.line,
-                call_node.column,
+                interpreter.source, call_node.line, call_node.column,
                 interpreter.filename,
                 hint=f'Pass exactly {len(self.function.params)} argument(s).',
             )
         environment = Env(self.closure)
         for name, value in zip(self.function.params, args):
             environment.set(name, value)
+        interpreter.call_stack.append((self.function.name, call_node.line, call_node.column))
         try:
-            interpreter.exec_block(self.function.body, environment)
-        except ReturnSignal as signal:
-            return signal.value
+            try:
+                interpreter.exec_block(self.function.body, environment)
+            except ReturnSignal as signal:
+                return signal.value
+        except RuntimeErrorTamba as error:
+            error.stack = list(interpreter.call_stack) + error.stack
+            raise
+        finally:
+            interpreter.call_stack.pop()
         return None
 
 
@@ -63,6 +68,7 @@ class Interpreter:
         self.filename = filename
         self.output = output if output is not None else print
         self.env = Env()
+        self.call_stack = []
         self.env.set('toree', self._toree)
 
     def _toree(self, *args):
@@ -113,10 +119,8 @@ class Interpreter:
         try:
             if isinstance(node, Literal):
                 return node.value
-
             if isinstance(node, Variable):
                 return self.env.get(node.name)
-
             if isinstance(node, Unary):
                 value = self.eval(node.expr)
                 if node.op == 'NOT':
@@ -124,14 +128,12 @@ class Interpreter:
                 if node.op == '-':
                     return -value
                 return +value
-
             if isinstance(node, Binary):
                 left = self.eval(node.left)
                 if node.op == 'and':
                     return self.eval(node.right) if left else left
                 if node.op == 'or':
                     return left if left else self.eval(node.right)
-
                 right = self.eval(node.right)
                 operations = {
                     '+': lambda: left + right,
@@ -147,12 +149,10 @@ class Interpreter:
                     '>=': lambda: left >= right,
                 }
                 return operations[node.op]()
-
             if isinstance(node, Assign):
                 value = self.eval(node.value)
                 self.env.assign(node.name, value)
                 return value
-
             if isinstance(node, Call):
                 function = self.eval(node.callee)
                 args = [self.eval(argument) for argument in node.args]
@@ -161,30 +161,18 @@ class Interpreter:
                 if not callable(function):
                     raise TypeError(f'{function!r} is not callable')
                 return function(*args)
-
         except KeyError as error:
             raise RuntimeErrorTamba(
                 f"Undefined variable '{error.args[0]}'",
-                self.source,
-                node.line,
-                node.column,
-                self.filename,
+                self.source, node.line, node.column, self.filename,
                 hint='Check the variable name or define it before use.',
             ) from None
         except ZeroDivisionError:
             raise RuntimeErrorTamba(
-                'Division by zero',
-                self.source,
-                node.line,
-                node.column,
-                self.filename,
+                'Division by zero', self.source, node.line, node.column, self.filename,
                 hint='Make sure the divisor cannot be zero.',
             ) from None
         except TypeError as error:
             raise RuntimeErrorTamba(
-                str(error),
-                self.source,
-                node.line,
-                node.column,
-                self.filename,
+                str(error), self.source, node.line, node.column, self.filename,
             ) from None
